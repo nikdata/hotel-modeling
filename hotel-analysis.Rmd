@@ -1,0 +1,46 @@
+---
+title: "Hotel"
+author: "Nik Agarwal"
+date: "4/14/2020"
+output:
+  html_document:
+    toc: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# load libraries
+library(tidyverse)
+
+# load dataset
+hotels <- vroom::vroom(
+  file = "https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-02-11/hotels.csv",
+  na = c("", " ", "NA", "NULL"))
+```
+
+
+```{r df_preview}
+glimpse(hotels)
+```
+
+
+```{r null_chk}
+hotels %>%
+  purrr::map_df(function(x) sum(is.na(x))) %>%
+  tidyr::pivot_longer(
+    cols = everything(),
+    names_to = "variable",
+    values_to = 'missing'
+  ) %>%
+  dplyr::arrange(desc(missing)) %>%
+  mutate(
+    percent_missing = round(missing / nrow(hotels),2)
+  ) %>%
+  filter(missing > 0)
+```
+
+Conclusions
+- We can remove the variable <company> from the entire training.
+- We can consider removing the variable <agent> since 14% of the observations are missing
+- We can consider simply remove the missing values for country
