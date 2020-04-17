@@ -44,3 +44,224 @@ Conclusions
 - We can remove the variable <company> from the entire training.
 - We can consider removing the variable <agent> since 14% of the observations are missing
 - We can consider simply remove the missing values for country
+
+Actions
+- Remove the variable company
+- Replace missing values in variable agent with 9999 (indicating that it was an unknown agent)
+- drop all rows that are missing country and missing children (losing 492 rows)
+
+**check to see response variable**
+
+```{r hotel_type}
+
+hotels %>%
+  group_by(hotel) %>%
+  count() %>%
+  rename(obs_count = n) %>%
+  mutate(
+    pct = round(obs_count / nrow(hotels),2)
+  )
+
+```
+
+```{r response_var}
+
+hotels %>%
+  group_by(is_canceled) %>%
+  count() %>%
+  rename(obs_count = n) %>%
+  mutate(
+    pct = round(obs_count / nrow(hotels),2)
+  )
+
+```
+```{r}
+hotels %>%
+  group_by(hotel, is_canceled) %>%
+  count() %>%
+  rename(obs_count = n) %>%
+  pivot_wider(
+    names_from = is_canceled,
+    values_from = obs_count,
+    values_fill = list(obs_count = 0)
+  ) %>%
+  rename(not_cancelled = `0`, cancelled = `1`)
+```
+```{r}
+hotels %>%
+  group_by(hotel, is_canceled) %>%
+  count() %>%
+  rename(obs_count = n) %>%
+  mutate(
+    pct = round(obs_count / nrow(hotels),2)
+  ) %>%
+  select(-obs_count) %>%
+  pivot_wider(
+    names_from = is_canceled,
+    values_from = pct,
+    values_fill = list(obs_count = 0)
+  ) %>%
+  rename(not_cancelled = `0`, cancelled = `1`)
+```
+
+```{r}
+
+total_city <- hotels %>% filter(hotel == 'City Hotel') %>% count() %>% pull()
+total_resort <- hotels %>% filter(hotel == 'Resort Hotel') %>% count() %>% pull()
+
+hotels %>%
+  group_by(hotel, is_canceled) %>%
+  count() %>%
+  rename(obs_count = n) %>%
+  mutate(
+    total_obs = case_when(
+      hotel == 'City Hotel' ~ total_city,
+      TRUE ~ total_resort
+    ),
+    pct = round(obs_count / total_obs,2)
+  ) %>%
+  pivot_wider(
+    id_cols = hotel,
+    names_from = is_canceled,
+    values_from = pct
+  ) %>%
+  rename(cancelled = `1`, not_cancelled = `0`)
+
+```
+We will still make 1 model even though there are two types of hotels.
+
+## Feature Engineering
+
+- Replace missing values in travel agent column with 9999
+- discard rows that have missing values for country & children
+- create feature that looks at the day of week of check-in (M, T, W, etc.)
+- create feature that tells the duration of stay (planned or actual)
+- create feature that tells us total guests
+- total cost of stay
+- create feature if meal was included in reservation or not
+
+```{r create_newdf}
+chorizo <- hotels
+```
+
+
+
+```{r replace_agent}
+
+
+chorizo <- chorizo %>%
+  mutate(
+    agent = ifelse(is.na(agent), 9999, agent)
+  )
+
+```
+
+
+```{r remove_company}
+
+chorizo <- chorizo %>%
+  select(-company)
+
+```
+
+
+```{r remove_rows}
+
+chorizo <- chorizo %>%
+  drop_na()
+
+```
+
+
+```{r confirm_nomissingvals}
+
+chorizo %>%
+  map_df(function(x) sum(is.na(x))) %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = 'variable',
+    values_to = "missing"
+  ) %>%
+  arrange(desc(missing))
+
+```
+
+
+```{r dayofweek}
+chorizo <- chorizo %>%
+  mutate(
+    reservation_date = lubridate::ymd(paste0(arrival_date_year,"-",arrival_date_month,"-",arrival_date_day_of_month)),
+    day_of_week = lubridate::wday(reservation_date, label = T)
+  )
+```
+
+
+```{r stay_duration}
+
+chorizo <- chorizo %>%
+ mutate(
+    stay_duration = stays_in_week_nights + stays_in_weekend_nights
+  )
+
+```
+
+
+```{r total_guests}
+
+chorizo <- chorizo %>%
+  mutate(
+    total_guests = adults + children + babies
+  )
+
+```
+
+
+```{r total_cost_of_stay}
+chorizo <- chorizo %>%
+  mutate(
+    total_cost = stay_duration * adr
+  ) %>%
+  filter(total_cost > 0)
+```
+
+
+```{r meal_included}
+
+chorizo <- chorizo %>%
+  mutate(
+    meal_included = case_when(meal %in% c('SC','Undedfined') ~ 0, TRUE ~ 1)
+  )
+
+```
+
+
+Let's get ride of extra columns now
+
+```{r delete_extra_columns}
+
+chorizo <- chorizo %>%
+  select(-arrival_date_year, -arrival_date_month, -arrival_date_week_number, -arrival_date_day_of_month, -stays_in_weekend_nights, -stays_in_week_nights, -adults, -children, -babies, -reservation_status, -reservation_status_date, -adr, -meal, -distribution_channel)
+
+```
+
+
+# create training, validation, and test data sets
+
+
+```{r splits}
+set.seed(8837)
+splits <- rsample::initial_split(chorizo, prop = 0.8, strata = is_canceled)
+
+df_train <- splits %>% rsample::training()
+df_test <- splits %>% rsample::testing()
+
+# split the training dataset further
+
+set.seed(3362)
+vsplit <- rsample::initial_split(df_train, prop = 0.8, strata = is_canceled)
+df_train <- vsplit %>% rsample::training()
+df_valid <- vsplit %>% rsample::testing()
+
+
+```
+
