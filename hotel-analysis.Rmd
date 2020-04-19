@@ -9,23 +9,80 @@ output:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+```
+# Introduction
 
-# load libraries
+One of my main motivations is to learn how to develop models using a GPU. Model development using a GPU is quite a bit different than simply building a model in-memory. For starters, you need a GPU! What's interesting is that you need a *compatible* GPU that works with an appropriate framework. For instance, if you want to use TensorFlow, you have to have a compatible nVidia GPU. However, what if you use newer Macs (post 2015) that are only compatible with AMD GPUs? That's where another framework called [PlaidML](https://github.com/plaidml/plaidml) comes to the rescue.
+
+PlaidML is an alternative framework to TensorFlow that enables you to use almost any compatible GPU - such as AMD Radeon, nVidia, etc. You can find out how to set-up PlaidML [here](https://plaidml.github.io/plaidml/docs/install#macos). While PlaidML may not be as mature as TensorFlow, you can easily use Keras (the high-level wrapper) and continue on your way. Sure, I could have used Google CoLab or AWS to learn how to build models using a GPU (and stuck with TensorFlow). However, I prefer to do my analysis/coding on a local machine in a non-notebook environment. But I digress.
+
+Surprisingly, I found it challenging to find simple yet comprhensive examples for regression and classification. Many of the examples I found were around image classification, text analytics, etc. Even the 'simple' regression example (see [here](https://machinelearningmastery.com/regression-tutorial-keras-deep-learning-library-python/)) uses a dataset that is pretty much ready for a neural network. I am not 'knocking' on the author, but I have to admit that if you're learning how to build models on a GPU, sometimes it is worthwhile to use a dataset that isn't 'analytics-ready' so you can see the steps involved to get to the actual modeling phase. Or maybe that's how I learn? Either way, I figured it's best if I create my own example.
+
+I have three main goals for this exercise: 
+
+- Pick a dataset and walk through a 'usual' data-science process (e.g., exploratory data analysis - EDA, feature engineering, train/test split, etc.)
+- Develop a simple neural network model using Keras
+- Apply trained model to test dataset
+
+**NOTE**: I am not interested in making the 'perfect' model or even a well-performing model. I am simply creating a walkthrough on how to go from a dataset to trained neural network (i.e., deep neural network - DNN) model using a GPU, PlaidML, and Keras.
+
+
+# Background on Dataset
+
+On February 11, 2020, the [TidyTuesday](https://github.com/rfordatascience/tidytuesday) project published an interesting dataset around [hotel bookings](https://github.com/rfordatascience/tidytuesday/blob/master/data/2020/2020-02-11). This dataset is actually from a [research paper](https://www.sciencedirect.com/science/article/pii/S2352340918315191#f0010) that was published in 2019.
+
+Briefly, the dataset captures the bookings made for customers arriving between July 1, 2015 and August 31, 2017 between two different hotel types (resort vs. city).
+
+While this is is a great exploratory dataset, I'm choosing to predict whether a booking will be cancelled or not (a classic two-class problem). Contextually speaking, this dataset may not perform well because it may not capture the true reasons why a booking was cancelled. However, it is a large enough dataset that I can use as a walkthrough.
+
+I am aware that this dataset is fairly 'clean' and ready to be analyzed. And that's ok! This dataset is actually not perfect:
+
+- it has missing values
+- it has several categoricals
+- new features can be created
+
+In my view, this dataset is perfect!
+
+# Load Data
+
+I will be making use of several libraries for this walkthrough:
+
+- {vroom}: for reading in the dataset
+- {tidyverse}: for data wrangling and plots
+- {rsample}: for creating training/test dataset
+- {recipes}: for processing both training & test datasets
+- {keras}:  for neural network using GPU
+
+```{r load_libraries, message=FALSE, warning=FALSE}
 library(tidyverse)
-
-# load dataset
-hotels <- vroom::vroom(
-  file = "https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-02-11/hotels.csv",
-  na = c("", " ", "NA", "NULL"))
+library(rsample)
+library(recipes)
+library(keras)
 ```
 
+Now let's load the dataset:
+
+```{r load_data}
+hotels <- vroom::vroom(
+  file = "https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-02-11/hotels.csv",
+  na = c("", " ", "NA", "NULL", 'Undefined'))
+```
+
+Have you used vroom? It's basically a 'competitor' to the {data.table} package, but aligned with the tidyverse grammar. {data.table} is a great package and is FAST at almost everything. However, I prefer vroom over {data.table}'s `fread()` function.
+
+One of the interesting things about `vroom()` is that you can identify what makes up an *na* or NULL value. In this case, I populated some example terms that I have seen used to identify NULL values. In my experience, this is often the case where NULL values are actually identifed as "NULL" or "NA" (in other words, these are characters).
+
+Now let's take a quick peek at the data using the `glimpse()` function (part of {dplyr}).
 
 ```{r df_preview}
 glimpse(hotels)
 ```
 
+# Check for Missing Values
 
-```{r null_chk}
+One of the first things I like to do is check for missing values. This is great for identifying variables (i.e., predictors) that we can exclude early on because they have too many missing values or variables which require imputation.
+
+```{r null_chk, message=FALSE, warning=FALSE}
 hotels %>%
   purrr::map_df(function(x) sum(is.na(x))) %>%
   tidyr::pivot_longer(
@@ -34,47 +91,193 @@ hotels %>%
     values_to = 'missing'
   ) %>%
   dplyr::arrange(desc(missing)) %>%
-  mutate(
+  dplyr::mutate(
     percent_missing = round(missing / nrow(hotels),2)
   ) %>%
-  filter(missing > 0)
+  dplyr::filter(missing > 0)
 ```
 
-Conclusions
-- We can remove the variable <company> from the entire training.
+It seems like there are seven (7) different variables that have missing values. Note how almost 94% of the values in the variable <company> are missing. I can confidently say that this variable is not worth imputing or keeping in our analysis.
+
+## Conclusions
+- Remove the variable <company> from the entire training.
 - We can consider removing the variable <agent> since 14% of the observations are missing
-- We can consider simply remove the missing values for country
+- We can consider simply removing the missing observations (i.e., rows) for country, distribution channel, market segment, and children
+- We can consider imputing the missing values for meal
 
-Actions
-- Remove the variable company
-- Replace missing values in variable agent with 9999 (indicating that it was an unknown agent)
-- drop all rows that are missing country and missing children (losing 492 rows)
+# Variable Exploration
 
-**check to see response variable**
+After checking for null values, I like to explore a few interesting variables further. For the purposes of this walkthrough, I'm going to focus on the following variables:
 
-```{r hotel_type}
+- agent
+- hotel type
+- cancellation (the response variable <is_canceled>)
 
+Generally, this would be more exhaustive, but for this walkthrough it is not as important.
+
+## agent
+
+Let's explore the variable <agent> further. First off, let's see how many unique values exist:
+
+```{r agent_unique_values}
+
+length(unique(hotels$agent))
+
+```
+
+There are 334 unique values for the variable <agent>. This includes the NULL value. Typically, we can use the {forcats} package to trim down the number of unique values. For instance, we can identify the top 5 values and then have a 6th value that simply means "all others". However, if you recall, our goal is to predict cancellation. This column seems to be a unique identifier for the travel agent or tour operator. However, I'm not sure if this column will be contextually important. Don't forget, it also is missing 14% of the values!
+
+For the purposes of this walkthrough, I'll simply remove it.
+
+
+## is_canceled (the response variable)
+
+The response variable <is_canceled> is essentially a binary column: 1 meaning true, 0 meaning false. Let's see if these outcomes are balanced:
+
+```{r response_variable_balance_chk}
+hotels %>%
+  dplyr::group_by(is_canceled) %>%
+  dplyr::count() %>%
+  dplyr::rename('observation_count' = 'n') %>%
+  dplyr::mutate(
+    pct = round(observation_count / nrow(hotels),2)
+  )
+```
+
+The table shows that this is about a 60/40 split. It's not really well-balanced. This is good to know when we go to split our dataset into training and test datasets. We'll want to make sure that we apply appropriate strategies to avoid an unbalanced dataset.
+
+## hotel
+
+This variable identifies what type of hotel the observation is for. For instance, is it a city hotel or a resort hotel?
+
+```{r cityvsresort}
 hotels %>%
   group_by(hotel) %>%
   count() %>%
-  rename(obs_count = n) %>%
+  rename(observation_count = n) %>%
   mutate(
-    pct = round(obs_count / nrow(hotels),2)
+    pct = round(observation_count / nrow(hotels),2)
+  )
+```
+
+It seems that almost 70% of the booking data in our dataset are for the city hotel. This makes sense intuitively as the city hotel will probably have far more business-related bookings (i.e., more bookings of shorter durations) than a resort hotel which is geared more towards vacationers. Also, the locations of the hotels and amenities may vary.
+
+
+# Feature Engineering
+
+After having spent some time with this dataset, there are definitely a few features that I want to create (before I dive further into some EDA):
+
+- Remove the agent variable
+- discard rows that have missing values for country & children
+- create feature that looks at the day of week of arrival (M, T, W, etc.)
+- create feature that tells the duration of stay (planned or actual)
+- create feature that identifying total guests reservation is for
+- total cost of stay
+- create feature if meal was included in reservation or not (per the data dictionary, all NULL values mean no meal was included)
+- convert the variable hotel to binary (1 for city hotel, 0 for resort)
+
+One of things that I like to do before creating or deleting columns and rows is to create another dataframe.
+
+```{r create_newdf}
+
+cln_hotel <- hotels
+
+```
+
+## Feature:: Drop Missing Observations
+
+```{r feat_dropobservations}
+cln_hotel <- cln_hotel %>%
+  tidyr::drop_na(children, country)
+```
+
+
+
+## Feature: day of week
+
+Here we will combine the separated date parts for arrival and determine the day of week (e.g., Monday, Tuesday, etc.)
+
+```{r feat_dayofweek}
+
+cln_hotel <- cln_hotel %>%
+  dplyr::mutate(
+    reservation_date = lubridate::ymd(paste0(arrival_date_year,"-",arrival_date_month,"-",arrival_date_day_of_month)),
+    day_of_week = lubridate::wday(reservation_date, label = T)
   )
 
 ```
 
-```{r response_var}
+## Feature: Duration of Stay
 
-hotels %>%
-  group_by(is_canceled) %>%
-  count() %>%
-  rename(obs_count = n) %>%
-  mutate(
-    pct = round(obs_count / nrow(hotels),2)
+```{r feat_duration}
+
+cln_hotel <- cln_hotel %>%
+  dplyr::mutate(
+    stay_duration = stays_in_week_nights + stays_in_weekend_nights
+  )
+```
+
+
+## Feature: Total Guests
+
+```{r feat_totalguests}
+
+cln_hotel <- cln_hotel %>%
+  dplyr::mutate(
+    total_guests = adults + children + babies
   )
 
 ```
+
+
+## Feature: Total Cost of Stay
+
+```{r feat_costofstay}
+cln_hotel <- cln_hotel %>%
+  dplyr::mutate(
+    total_cost = stay_duration * adr
+  ) %>%
+  filter(total_cost > 0)
+```
+
+
+## Feature: Meal Included?
+
+```{r feat_meal}
+
+cln_hotel <- cln_hotel %>%
+  dplyr::mutate(
+    meal_included = case_when(meal %in% c('SC','Undedfined') ~ 0, TRUE ~ 1)
+  )
+
+```
+
+
+## Feature: City Hotel?
+
+```{r feat_cityhotel}
+cln_hotel <- cln_hotel %>%
+  dplyr::mutate(
+    city_hotel = ifelse(hotel == 'City Hotel', 1, 0)
+  )
+```
+
+
+
+## Feature: Remove Variables
+
+
+
+
+
+
+
+
+
+# VOID ##
+
+
+
 ```{r}
 hotels %>%
   group_by(hotel, is_canceled) %>%
@@ -132,17 +335,18 @@ We will still make 1 model even though there are two types of hotels.
 
 ## Feature Engineering
 
-- Replace missing values in travel agent column with 9999
+- Remove the agent variable
 - discard rows that have missing values for country & children
 - create feature that looks at the day of week of check-in (M, T, W, etc.)
 - create feature that tells the duration of stay (planned or actual)
 - create feature that tells us total guests
 - total cost of stay
 - create feature if meal was included in reservation or not
+- convert the variable hotel to binary (1 for city hotel, 0 for resort)
+- impute missing value in meal with 'none' (per data dictionary)
 
-```{r create_newdf}
-chorizo <- hotels
-```
+
+
 
 
 
@@ -150,9 +354,7 @@ chorizo <- hotels
 
 
 chorizo <- chorizo %>%
-  mutate(
-    agent = ifelse(is.na(agent), 9999, agent)
-  )
+  select(-agent)
 
 ```
 
@@ -187,52 +389,12 @@ chorizo %>%
 ```
 
 
-```{r dayofweek}
-chorizo <- chorizo %>%
-  mutate(
-    reservation_date = lubridate::ymd(paste0(arrival_date_year,"-",arrival_date_month,"-",arrival_date_day_of_month)),
-    day_of_week = lubridate::wday(reservation_date, label = T)
-  )
-```
 
 
-```{r stay_duration}
-
-chorizo <- chorizo %>%
- mutate(
-    stay_duration = stays_in_week_nights + stays_in_weekend_nights
-  )
-
-```
 
 
-```{r total_guests}
-
-chorizo <- chorizo %>%
-  mutate(
-    total_guests = adults + children + babies
-  )
-
-```
 
 
-```{r total_cost_of_stay}
-chorizo <- chorizo %>%
-  mutate(
-    total_cost = stay_duration * adr
-  ) %>%
-  filter(total_cost > 0)
-```
-
-
-```{r meal_included}
-
-chorizo <- chorizo %>%
-  mutate(
-    meal_included = case_when(meal %in% c('SC','Undedfined') ~ 0, TRUE ~ 1)
-  )
-
-```
 
 
 Let's get ride of extra columns now
@@ -240,7 +402,7 @@ Let's get ride of extra columns now
 ```{r delete_extra_columns}
 
 chorizo <- chorizo %>%
-  select(-arrival_date_year, -arrival_date_month, -arrival_date_week_number, -arrival_date_day_of_month, -stays_in_weekend_nights, -stays_in_week_nights, -adults, -children, -babies, -reservation_status, -reservation_status_date, -adr, -meal, -distribution_channel)
+  select(-arrival_date_year, -arrival_date_month, -arrival_date_week_number, -arrival_date_day_of_month, -stays_in_weekend_nights, -stays_in_week_nights, -adults, -children, -babies, -reservation_status, -reservation_status_date, -adr, -meal, -distribution_channel, -reservation_date)
 
 ```
 
@@ -263,5 +425,36 @@ df_train <- vsplit %>% rsample::training()
 df_valid <- vsplit %>% rsample::testing()
 
 
+```
+
+
+```{r recipe_def}
+
+# define recipe definition
+
+rec1 <- recipes::recipe(~., data = df_train) %>%
+  recipes::update_role(is_canceled, new_role = 'outcome') %>%
+  recipes::update_role(meal_included, city_hotel, is_repeated_guest, new_role = 'pred_binary') %>%
+  recipes::step_normalize(recipes::all_numeric(), -recipes::has_role('pred_binary'), -is_canceled) %>%
+  recipes::step_string2factor(recipes::has_type(match = 'nominal')) %>%
+  recipes::step_ordinalscore(day_of_week) %>%
+  recipes::step_integer(recipes::all_nominal()) %>%
+  recipes::step_nzv(everything())
+  
+  
+
+summary(rec1)
+
+```
+
+```{r}
+rec1 <- recipes::prep(rec1, data = df_train, strings_as_factors = FALSE)
+tmp <- recipes::juice(rec1, everything())
+glimpse(tmp)
+
+```
+
+```{r}
+recipes::bake(rec1, df_valid)
 ```
 
