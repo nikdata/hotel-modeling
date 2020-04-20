@@ -176,7 +176,7 @@ After having spent some time with this dataset, there are definitely a few featu
 - create feature if meal was included in reservation or not (per the data dictionary, all NULL values mean no meal was included)
 - convert the variable hotel to binary (1 for city hotel, 0 for resort)
 
-One of things that I like to do before creating or deleting columns and rows is to create another dataframe.
+One of first things that I like to do before creating or deleting columns and rows is to create another dataframe.
 
 ```{r create_newdf}
 
@@ -266,6 +266,30 @@ cln_hotel <- cln_hotel %>%
 
 ## Feature: Remove Variables
 
+```{r feat_removevars}
+
+cln_hotel <- cln_hotel %>%
+  select(
+    -agent,
+    -company,
+    -arrival_date_year, 
+    -arrival_date_month, 
+    -arrival_date_week_number, 
+    -arrival_date_day_of_month, 
+    -stays_in_weekend_nights, 
+    -stays_in_week_nights, 
+    -adults, 
+    -children, 
+    -babies, 
+    -reservation_status, 
+    -reservation_status_date, 
+    -adr, 
+    -meal, 
+    -distribution_channel, 
+    -reservation_date
+  )
+
+```
 
 
 
@@ -333,47 +357,6 @@ hotels %>%
 ```
 We will still make 1 model even though there are two types of hotels.
 
-## Feature Engineering
-
-- Remove the agent variable
-- discard rows that have missing values for country & children
-- create feature that looks at the day of week of check-in (M, T, W, etc.)
-- create feature that tells the duration of stay (planned or actual)
-- create feature that tells us total guests
-- total cost of stay
-- create feature if meal was included in reservation or not
-- convert the variable hotel to binary (1 for city hotel, 0 for resort)
-- impute missing value in meal with 'none' (per data dictionary)
-
-
-
-
-
-
-```{r replace_agent}
-
-
-chorizo <- chorizo %>%
-  select(-agent)
-
-```
-
-
-```{r remove_company}
-
-chorizo <- chorizo %>%
-  select(-company)
-
-```
-
-
-```{r remove_rows}
-
-chorizo <- chorizo %>%
-  drop_na()
-
-```
-
 
 ```{r confirm_nomissingvals}
 
@@ -390,21 +373,6 @@ chorizo %>%
 
 
 
-
-
-
-
-
-
-
-Let's get ride of extra columns now
-
-```{r delete_extra_columns}
-
-chorizo <- chorizo %>%
-  select(-arrival_date_year, -arrival_date_month, -arrival_date_week_number, -arrival_date_day_of_month, -stays_in_weekend_nights, -stays_in_week_nights, -adults, -children, -babies, -reservation_status, -reservation_status_date, -adr, -meal, -distribution_channel, -reservation_date)
-
-```
 
 
 # create training, validation, and test data sets
