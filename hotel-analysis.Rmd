@@ -186,11 +186,12 @@ cln_hotel <- hotels
 
 ## Feature:: Drop Missing Observations
 
+Recall from earlier that the variables <children> and <country> had missing observations. However, since there weren't many observations missing, it was easier to simply drop the rows that had missing values for these two respective columns.
+
 ```{r feat_dropobservations}
 cln_hotel <- cln_hotel %>%
   tidyr::drop_na(children, country)
 ```
-
 
 
 ## Feature: day of week
@@ -209,6 +210,8 @@ cln_hotel <- cln_hotel %>%
 
 ## Feature: Duration of Stay
 
+This feature calculates the total number of nights a guest has booked for regardless of day of week.
+
 ```{r feat_duration}
 
 cln_hotel <- cln_hotel %>%
@@ -219,6 +222,8 @@ cln_hotel <- cln_hotel %>%
 
 
 ## Feature: Total Guests
+
+This feature tallies up the total number of expected guests on a booking.
 
 ```{r feat_totalguests}
 
@@ -232,6 +237,8 @@ cln_hotel <- cln_hotel %>%
 
 ## Feature: Total Cost of Stay
 
+Since we don't know the actual cost per night, we are able to use the variable <adr> which is the average daily rate and muliply that with the total number of nights booked (this variable was created above). We also filter the dataset to only include total costs that are more than 0. This ensures that we do not model very special circumstances.
+
 ```{r feat_costofstay}
 cln_hotel <- cln_hotel %>%
   dplyr::mutate(
@@ -242,6 +249,8 @@ cln_hotel <- cln_hotel %>%
 
 
 ## Feature: Meal Included?
+
+Since we know most stays include some type of meal, it is far easier to create a "boolean" column that describes if a booking has a meal included or not regardless of what kind of meal is included (if any).
 
 ```{r feat_meal}
 
@@ -255,6 +264,8 @@ cln_hotel <- cln_hotel %>%
 
 ## Feature: City Hotel?
 
+Finally, we know that there are two types of hotels: city & resort. It's simpler to create a feature that describes if the observation is for a city hotel or not. If not, we can safely assume it is for a resort hotel.
+
 ```{r feat_cityhotel}
 cln_hotel <- cln_hotel %>%
   dplyr::mutate(
@@ -265,6 +276,8 @@ cln_hotel <- cln_hotel %>%
 
 
 ## Feature: Remove Variables
+
+Since we created some new features, I'm going to remove some of the unneeded columns. Maybe these columns could improve the model, but for this tutorial's sake, we're just removing them.
 
 ```{r feat_removevars}
 
@@ -292,110 +305,26 @@ cln_hotel <- cln_hotel %>%
 ```
 
 
+# Train/Test Split
 
+Typically, I create 3 different datasets: training, validation, and test. Essentially, the model is built on the training dataset and the validation dataset is used to 'prove' out the model. I only use the test dataset as the absolute final dataset in which to prove out my trained model. Generally speaking, if my model fails on the test dataset, but performs well on the training and validation datasets, I start to look at the way the data were split. However, many issues can contribute to a model performing well on both training and validation datasets, but not performing well on the test dataset.
 
-
-
-
-
-# VOID ##
-
-
-
-```{r}
-hotels %>%
-  group_by(hotel, is_canceled) %>%
-  count() %>%
-  rename(obs_count = n) %>%
-  pivot_wider(
-    names_from = is_canceled,
-    values_from = obs_count,
-    values_fill = list(obs_count = 0)
-  ) %>%
-  rename(not_cancelled = `0`, cancelled = `1`)
-```
-```{r}
-hotels %>%
-  group_by(hotel, is_canceled) %>%
-  count() %>%
-  rename(obs_count = n) %>%
-  mutate(
-    pct = round(obs_count / nrow(hotels),2)
-  ) %>%
-  select(-obs_count) %>%
-  pivot_wider(
-    names_from = is_canceled,
-    values_from = pct,
-    values_fill = list(obs_count = 0)
-  ) %>%
-  rename(not_cancelled = `0`, cancelled = `1`)
-```
-
-```{r}
-
-total_city <- hotels %>% filter(hotel == 'City Hotel') %>% count() %>% pull()
-total_resort <- hotels %>% filter(hotel == 'Resort Hotel') %>% count() %>% pull()
-
-hotels %>%
-  group_by(hotel, is_canceled) %>%
-  count() %>%
-  rename(obs_count = n) %>%
-  mutate(
-    total_obs = case_when(
-      hotel == 'City Hotel' ~ total_city,
-      TRUE ~ total_resort
-    ),
-    pct = round(obs_count / total_obs,2)
-  ) %>%
-  pivot_wider(
-    id_cols = hotel,
-    names_from = is_canceled,
-    values_from = pct
-  ) %>%
-  rename(cancelled = `1`, not_cancelled = `0`)
-
-```
-We will still make 1 model even though there are two types of hotels.
-
-
-```{r confirm_nomissingvals}
-
-chorizo %>%
-  map_df(function(x) sum(is.na(x))) %>%
-  pivot_longer(
-    cols = everything(),
-    names_to = 'variable',
-    values_to = "missing"
-  ) %>%
-  arrange(desc(missing))
-
-```
-
-
-
-
-
-# create training, validation, and test data sets
-
+For this case study, I am only going to create a training and test dataset as I'm not interested in building the perfect model (if one can call it that), but rather a model using Keras.
 
 ```{r splits}
 set.seed(8837)
-splits <- rsample::initial_split(chorizo, prop = 0.8, strata = is_canceled)
+splits <- rsample::initial_split(cln_hotel, prop = 0.8, strata = is_canceled)
 
 df_train <- splits %>% rsample::training()
 df_test <- splits %>% rsample::testing()
 
-# split the training dataset further
-
-set.seed(3362)
-vsplit <- rsample::initial_split(df_train, prop = 0.8, strata = is_canceled)
-df_train <- vsplit %>% rsample::training()
-df_valid <- vsplit %>% rsample::testing()
-
-
 ```
 
 
+# Prep Training
+
+
+## Create Recipe
 ```{r recipe_def}
 
 # define recipe definition
@@ -415,14 +344,21 @@ summary(rec1)
 
 ```
 
+
+
+## Apply Recipe to Training DF
 ```{r}
 rec1 <- recipes::prep(rec1, data = df_train, strings_as_factors = FALSE)
-tmp <- recipes::juice(rec1, everything())
-glimpse(tmp)
+df_train <- recipes::juice(rec1, everything())
+glimpse(df_train)
 
 ```
 
+
+## Apply Recipe to Testing DF
 ```{r}
-recipes::bake(rec1, df_valid)
+df_test <- recipes::bake(rec1, df_test)
+glimpse(df_test)
 ```
 
+# Model Development - GPU
