@@ -157,6 +157,8 @@ model_recipe <- recipes::recipe(~., data = df_train) %>%
   recipes::step_integer(recipes::all_nominal()) %>%
   recipes::step_bin2factor(is_canceled) %>%
   recipes::step_downsample(is_canceled) %>%
+  recipes::step_factor2string(is_canceled) %>%
+  recipes::step_mutate(is_canceled = case_when(is_canceled == 'yes' ~ 1, TRUE ~ 0)) %>%
   recipes::step_nzv(everything()) %>%
   recipes::prep(training = df_train, strings_as_factors = FALSE)
 
@@ -183,3 +185,6 @@ new_dftest %>%
   mutate(
     pct = n / sum(n)
   )
+
+
+# KERAS
