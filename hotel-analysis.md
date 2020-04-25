@@ -1,13 +1,42 @@
-Predicting Hotel Booking Cancellations using Keras and PlaidML
-================
-Nik Agarwal
-4/25/2020
+-   [Introduction](#introduction)
+-   [Background on Dataset](#background-on-dataset)
+-   [Load Data](#load-data)
+-   [Quick Data Insights](#quick-data-insights)
+    -   [Check for Missing Values](#check-for-missing-values)
+        -   [Conclusions](#conclusions)
+    -   [Number of Unique Values per
+        variable](#number-of-unique-values-per-variable)
+        -   [Conclusions](#conclusions-1)
+-   [Variable Exploration](#variable-exploration)
+    -   [agent](#agent)
+    -   [is\_canceled (the response
+        variable)](#is_canceled-the-response-variable)
+    -   [hotel](#hotel)
+-   [Feature Engineering](#feature-engineering)
+-   [Dataset Preparation for Model
+    Development](#dataset-preparation-for-model-development)
+    -   [Train/Test Split](#traintest-split)
+    -   [Prep Training Dataset](#prep-training-dataset)
+    -   [Prep Test Dataset](#prep-test-dataset)
+    -   [Rearrange dataset columns](#rearrange-dataset-columns)
+-   [Model Development - GPU](#model-development---gpu)
+    -   [Define functional API](#define-functional-api)
+    -   [Train Model](#train-model)
+    -   [Predict Values for Test
+        Dataset](#predict-values-for-test-dataset)
+    -   [Model Assessment Metrics](#model-assessment-metrics)
+        -   [Confusion Matrix](#confusion-matrix)
+        -   [Accuracy](#accuracy)
+        -   [AUC](#auc)
+        -   [Precision & Recall](#precision-recall)
+        -   [F1 Score](#f1-score)
 
-# Introduction
+Introduction
+============
 
 One of my main motivations is to learn how to develop models using a
 GPU. Model development using a GPU is quite a bit different than simply
-building a model in-memory. For starters, you need a GPU\! What’s
+building a model in-memory. For starters, you need a GPU! What’s
 interesting is that you need a *compatible* GPU that works with an
 appropriate framework. For instance, if you want to use TensorFlow, you
 have to have a compatible nVidia GPU. However, what if you use newer
@@ -32,24 +61,25 @@ regression example (see
 [here](https://machinelearningmastery.com/regression-tutorial-keras-deep-learning-library-python/))
 uses a dataset that is pretty much ready for a neural network. I find,
 for myself, that it’s easier to work with a dataset that requires some
-‘cleaning’ and processing so that it’s a bit more representative of
-what you see in the real world.
+‘cleaning’ and processing so that it’s a bit more representative of what
+you see in the real world.
 
 I have three main goals for this exercise:
 
-  - Pick a dataset and brielfy walk through a ‘usual’ data-science
+-   Pick a dataset and brielfy walk through a ‘usual’ data-science
     process (e.g., exploratory data analysis - EDA, feature engineering,
     train/test split, etc.)
-  - Develop a simple neural network model using Keras with a PlaidML
+-   Develop a simple neural network model using Keras with a PlaidML
     backend
-  - Apply trained model to test dataset and obtain some metrics
+-   Apply trained model to test dataset and obtain some metrics
 
 **NOTE**: I am not interested in making the ‘perfect’ model or even a
 well-performing model. I am simply creating a walkthrough on how to go
 from a dataset to trained neural network (i.e., deep neural network -
 DNN) model using a GPU, PlaidML, and Keras.
 
-# Background on Dataset
+Background on Dataset
+=====================
 
 On February 11, 2020, the
 [TidyTuesday](https://github.com/rfordatascience/tidytuesday) project
@@ -70,26 +100,25 @@ because it may not capture the true reasons why a booking was cancelled.
 However, it is a large enough dataset that I can use as a walkthrough.
 
 I am aware that this dataset is fairly ‘clean’ and ready to be analyzed.
-And that’s ok\! This dataset is actually not perfect:
+And that’s ok! This dataset is actually not perfect:
 
-  - it has missing values
-  - it has several categoricals
-  - new features can be created
+-   it has missing values
+-   it has several categoricals
+-   new features can be created
 
-In my view, this dataset is perfect\!
+In my view, this dataset is perfect!
 
-# Load Data
+Load Data
+=========
 
 I will be making use of several libraries for this walkthrough:
 
-  - {vroom}: for reading in the dataset
-  - {tidyverse}: for data wrangling and plots
-  - {rsample}: for creating training/test dataset
-  - {recipes}: for processing both training & test datasets
-  - {keras}: for neural network using GPU
-  - {yardstick}: for assessing (i.e., metrics) predictions
-
-<!-- end list -->
+-   {vroom}: for reading in the dataset
+-   {tidyverse}: for data wrangling and plots
+-   {rsample}: for creating training/test dataset
+-   {recipes}: for processing both training & test datasets
+-   {keras}: for neural network using GPU
+-   {yardstick}: for assessing (i.e., metrics) predictions
 
 ``` r
 library(vroom)
@@ -172,9 +201,11 @@ glimpse(hotels)
     ## $ reservation_status             <chr> "Check-Out", "Check-Out", "Check-Out",…
     ## $ reservation_status_date        <date> 2015-07-01, 2015-07-01, 2015-07-02, 2…
 
-# Quick Data Insights
+Quick Data Insights
+===================
 
-## Check for Missing Values
+Check for Missing Values
+------------------------
 
 One of the first things I like to do is check for missing values. This
 is great for identifying variables (i.e., predictors) that we can
@@ -214,15 +245,16 @@ or keeping in our analysis.
 
 ### Conclusions
 
-  - Remove the variable <company> from the entire training.
-  - We can consider removing the variable <agent> since 14% of the
+-   Remove the variable <company> from the entire training.
+-   We can consider removing the variable <agent> since 14% of the
     observations are missing
-  - We can consider simply removing the missing observations (i.e.,
+-   We can consider simply removing the missing observations (i.e.,
     rows) for country, distribution channel, market segment, and
     children
-  - We can consider imputing the missing values for meal
+-   We can consider imputing the missing values for meal
 
-## Number of Unique Values per variable
+Number of Unique Values per variable
+------------------------------------
 
 Another thing we can look at is how many unique values exist for each
 variable. This could help us understand which variables could be
@@ -259,29 +291,31 @@ hotels %>%
 
 ### Conclusions
 
-  - From my perspective, company and agent are two variables that we
+-   From my perspective, company and agent are two variables that we
     could probably remove. If a booking is cancelled, it probably won’t
     be cancelled due to the travel agent or the company that made the
     booking. Perhaps I’m wrong, but at least in this context, I don’t
     think it’s a big deal.
 
-  - Although there are many countries (178 unique ones), I feel that
+-   Although there are many countries (178 unique ones), I feel that
     country could be an indicator of whether a booking may be cancelled.
 
-# Variable Exploration
+Variable Exploration
+====================
 
 After checking for null values, I like to explore a few interesting
 variables further. For the purposes of this walkthrough, I’m going to
 focus on the following variables:
 
-  - agent
-  - hotel type
-  - cancellation (the response variable <is_canceled>)
+-   agent
+-   hotel type
+-   cancellation (the response variable <is_canceled>)
 
 Generally, this would be more exhaustive, but for this walkthrough it is
 not as important.
 
-## agent
+agent
+-----
 
 Let’s explore the variable <agent> further. First off, let’s see how
 many unique values exist:
@@ -299,7 +333,7 @@ and then have a 6th value that simply means “all others”. However, if
 you recall, our goal is to predict cancellation. This column seems to be
 a unique identifier for the travel agent or tour operator. However, I’m
 not sure if this column will be contextually important. Don’t forget, it
-also is missing 14% of the values\!
+also is missing 14% of the values!
 
 For the purposes of this walkthrough, I’ll simply remove it.
 
@@ -330,7 +364,8 @@ that I have with this variable is that the agent value has been
 anonymized (we have no idea what or who agent 9 is) and there are many
 missing values for this variable.
 
-## is\_canceled (the response variable)
+is\_canceled (the response variable)
+------------------------------------
 
 The response variable <is_canceled> is essentially a binary column: 1
 meaning true, 0 meaning false. Let’s see if these outcomes are balanced:
@@ -357,7 +392,8 @@ well-balanced. This is good to know when we go to split our dataset into
 training and test datasets. We’ll want to make sure that we apply
 appropriate strategies to avoid an unbalanced dataset.
 
-## hotel
+hotel
+-----
 
 This variable identifies what type of hotel the observation is for. For
 instance, is it a city hotel or a resort hotel?
@@ -385,22 +421,23 @@ have far more business-related bookings (i.e., more bookings of shorter
 durations) than a resort hotel which is geared more towards vacationers.
 Also, the locations of the hotels and amenities may vary.
 
-# Feature Engineering
+Feature Engineering
+===================
 
 After having spent some time with this dataset, there are definitely a
 few features that I want to create (before I dive further into some
 EDA):
 
-  - Remove the agent variable
-  - discard rows that have missing values for country & children
-  - create feature that looks at the day of week of arrival (M, T, W,
+-   Remove the agent variable
+-   discard rows that have missing values for country & children
+-   create feature that looks at the day of week of arrival (M, T, W,
     etc.)
-  - create feature that tells the duration of stay (planned or actual)
-  - create feature that identifying total guests reservation is for
-  - total cost of stay
-  - create feature if meal was included in reservation or not (per the
+-   create feature that tells the duration of stay (planned or actual)
+-   create feature that identifying total guests reservation is for
+-   total cost of stay
+-   create feature if meal was included in reservation or not (per the
     data dictionary, all NULL values mean no meal was included)
-  - convert the variable hotel to binary (1 for city hotel, 0 for
+-   convert the variable hotel to binary (1 for city hotel, 0 for
     resort)
 
 One of first things that I like to do before creating or deleting
@@ -456,8 +493,7 @@ main_recipe <- recipes::recipe(~.,data = cln_hotel) %>%
 
 Now let’s apply the recipe to our main dataframe called cln\_hotel. As a
 bit of humor, I love Mexican food and I have named my dataframes as
-such. Hadley & Jenny Bryan would not
-approve\!
+such. Hadley & Jenny Bryan would not approve!
 
 ``` r
 grande_meal <- recipes::prep(main_recipe, data = cln_hotel, strings_as_factors = FALSE)
@@ -491,9 +527,11 @@ glimpse(burrito)
 
 Note the new features and the removal of redundant columns.
 
-# Dataset Preparation for Model Development
+Dataset Preparation for Model Development
+=========================================
 
-## Train/Test Split
+Train/Test Split
+----------------
 
 Typically, I create 3 different datasets: training, validation, and
 test. Essentially, the model is built on the training dataset and the
@@ -517,7 +555,8 @@ df_train <- splits %>% rsample::training()
 df_test <- splits %>% rsample::testing()
 ```
 
-## Prep Training Dataset
+Prep Training Dataset
+---------------------
 
 Recall from earlier that there is a bit of a class imbalance on the
 response variable, <is_canceled>. Let’s take a look at the imbalance in
@@ -541,22 +580,20 @@ df_train %>%
 
 One of the solutions we have here is that we can downsample the response
 variable (a method recommended by one my heros, Max Kuhn) to balance the
-response variable. And we can do this with more recipes\!
+response variable. And we can do this with more recipes!
 
 Since we are wanting to create a neural network, all the values must be
 numerical. Here’s what our recipes are doing:
 
-  - Converting the days of week (e.g., Monday, Tuesday, etc.) to a
+-   Converting the days of week (e.g., Monday, Tuesday, etc.) to a
     number
-  - Converting the response variable to a factor
-  - Downsampling the training data so that the cancelled
+-   Converting the response variable to a factor
+-   Downsampling the training data so that the cancelled
     vs. non-cancelled observations are balanced
-  - Removing variables that overwhelmingly contain one value (see
+-   Removing variables that overwhelmingly contain one value (see
     [step\_nzv
     documentation](https://tidymodels.github.io/recipes/reference/step_nzv.html))
     and almost no variance.
-
-<!-- end list -->
 
 ``` r
 model_recipe <- recipes::recipe(~., data = df_train) %>%
@@ -618,7 +655,8 @@ ds_train %>%
     ## 1           0 35161   0.5
     ## 2           1 35161   0.5
 
-## Prep Test Dataset
+Prep Test Dataset
+-----------------
 
 Now let’s apply the recipe to the test dataset.
 
@@ -646,7 +684,8 @@ glimpse(new_dftest)
     ## $ total_guests              <dbl> 0.03699141, 0.03699141, 0.03699141, 0.03699…
     ## $ total_of_special_requests <dbl> 0.5385384, 1.7973881, 1.7973881, -0.7203114…
 
-## Rearrange dataset columns
+Rearrange dataset columns
+-------------------------
 
 We rearrange the columns so that it’s easier to work with. This is
 probably optional, but I did this for my own sanity.
@@ -693,7 +732,8 @@ new_dftest <- new_dftest %>%
   )
 ```
 
-# Model Development - GPU
+Model Development - GPU
+=======================
 
 Now we’re going to build a neural network model using the GPU. Since I’m
 using a MacBook Pro with an external GPU that is NOT an nVidia brand, I
@@ -710,7 +750,8 @@ keras::use_virtualenv("~/python-virtual-environments/deeplearning/")
 use_backend('plaidml')
 ```
 
-## Define functional API
+Define functional API
+---------------------
 
 ``` r
 # define embedding sizes
@@ -851,7 +892,8 @@ summary(model)
     ## Non-trainable params: 0
     ## ________________________________________________________________________________
 
-## Train Model
+Train Model
+-----------
 
 ``` r
 history <- fit(
@@ -874,8 +916,8 @@ print(history)
 
     ## Trained on 70,322 samples (batch_size=1,000, epochs=50)
     ## Final epoch (plot to see history):
-    ## loss: 0.3942
-    ##  acc: 0.8122
+    ## loss: 0.3938
+    ##  acc: 0.8121
 
 ``` r
 plot(history)
@@ -883,9 +925,10 @@ plot(history)
 
     ## `geom_smooth()` using formula 'y ~ x'
 
-![](hotel-analysis_files/figure-gfm/plot_modeltraining-1.png)<!-- -->
+![](hotel-analysis_files/figure-markdown_github/plot_modeltraining-1.png)
 
-## Predict Values for Test Dataset
+Predict Values for Test Dataset
+-------------------------------
 
 ``` r
 yhat_class_pred <- predict(
@@ -901,7 +944,8 @@ yhat_class_pred <- predict(
   as.vector()
 ```
 
-## Model Assessment Metrics
+Model Assessment Metrics
+------------------------
 
 I’m going to create a simple tibble that enables me to capture the test
 values and the predicted values. This will enable assessing the metrics
@@ -928,8 +972,8 @@ test_tbl %>%
 
     ##                Truth
     ## Prediction      not_cancelled cancelled
-    ##   not_cancelled         12499      2100
-    ##   cancelled              2102      6689
+    ##   not_cancelled         12364      1976
+    ##   cancelled              2237      6813
 
 ### Accuracy
 
@@ -943,7 +987,7 @@ test_tbl %>%
     ##   .metric  .estimate
     ##   <chr>        <dbl>
     ## 1 accuracy     0.820
-    ## 2 kap          0.617
+    ## 2 kap          0.618
 
 ### AUC
 
@@ -956,7 +1000,7 @@ test_tbl %>%
     ## # A tibble: 1 x 2
     ##   .metric .estimate
     ##   <chr>       <dbl>
-    ## 1 roc_auc     0.897
+    ## 1 roc_auc     0.896
 
 ### Precision & Recall
 
@@ -970,7 +1014,7 @@ tibble(
     ## # A tibble: 1 x 2
     ##   precision recall
     ##       <dbl>  <dbl>
-    ## 1     0.856  0.856
+    ## 1     0.862  0.847
 
 ### F1 Score
 
@@ -983,4 +1027,4 @@ test_tbl %>%
     ## # A tibble: 1 x 1
     ##   .estimate
     ##       <dbl>
-    ## 1     0.856
+    ## 1     0.854
