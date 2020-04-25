@@ -3,8 +3,7 @@ title: "Predicting Hotel Booking Cancellations using Keras and PlaidML"
 author: "Nik Agarwal"
 date: "4/25/2020"
 output:
-  md_document:
-    variant: markdown_github
+  github_document:
     toc: true
     toc_depth: 3
 ---
