@@ -1,10 +1,11 @@
 ---
-title: "Hotel"
+title: "Predicting Hotel Booking Cancellations using Keras and PlaidML"
 author: "Nik Agarwal"
-date: "4/14/2020"
+date: "4/25/2020"
 output:
-  html_document:
+  github_document:
     toc: true
+    toc_depth: 3
 ---
 
 ```{r setup, include=FALSE}
@@ -16,13 +17,13 @@ One of my main motivations is to learn how to develop models using a GPU. Model 
 
 PlaidML is an alternative framework to TensorFlow that enables you to use almost any compatible GPU - such as AMD Radeon, nVidia, etc. You can find out how to set-up PlaidML [here](https://plaidml.github.io/plaidml/docs/install#macos). While PlaidML may not be as mature as TensorFlow, you can easily use Keras (the high-level wrapper) and continue on your way. Sure, I could have used Google CoLab or AWS to learn how to build models using a GPU (and stuck with TensorFlow). However, I prefer to do my analysis/coding on a local machine in a non-notebook environment. But I digress.
 
-Surprisingly, I found it challenging to find simple yet comprhensive examples for regression and classification. Many of the examples I found were around image classification, text analytics, etc. Even the 'simple' regression example (see [here](https://machinelearningmastery.com/regression-tutorial-keras-deep-learning-library-python/)) uses a dataset that is pretty much ready for a neural network. I am not 'knocking' on the author, but I have to admit that if you're learning how to build models on a GPU, sometimes it is worthwhile to use a dataset that isn't 'analytics-ready' so you can see the steps involved to get to the actual modeling phase. Or maybe that's how I learn? Either way, I figured it's best if I create my own example.
+Surprisingly, I found it challenging to find simple yet comprehenisve examples for regression and classification. Many of the examples I found were around image classification, text analytics, etc. Even the 'simple' regression example (see [here](https://machinelearningmastery.com/regression-tutorial-keras-deep-learning-library-python/)) uses a dataset that is pretty much ready for a neural network. I find, for myself, that it's easier to work with a dataset that requires some 'cleaning' and processing so that it's a bit more representative of what you see in the real world.
 
 I have three main goals for this exercise: 
 
-- Pick a dataset and walk through a 'usual' data-science process (e.g., exploratory data analysis - EDA, feature engineering, train/test split, etc.)
-- Develop a simple neural network model using Keras
-- Apply trained model to test dataset
+- Pick a dataset and brielfy walk through a 'usual' data-science process (e.g., exploratory data analysis - EDA, feature engineering, train/test split, etc.)
+- Develop a simple neural network model using Keras with a PlaidML backend
+- Apply trained model to test dataset and obtain some metrics
 
 **NOTE**: I am not interested in making the 'perfect' model or even a well-performing model. I am simply creating a walkthrough on how to go from a dataset to trained neural network (i.e., deep neural network - DNN) model using a GPU, PlaidML, and Keras.
 
@@ -52,12 +53,15 @@ I will be making use of several libraries for this walkthrough:
 - {rsample}: for creating training/test dataset
 - {recipes}: for processing both training & test datasets
 - {keras}:  for neural network using GPU
+- {yardstick}: for assessing (i.e., metrics) predictions
 
 ```{r load_libraries, message=FALSE, warning=FALSE}
+library(vroom)
 library(tidyverse)
 library(rsample)
 library(recipes)
 library(keras)
+library(yardstick)
 ```
 
 Now let's load the dataset:
@@ -68,7 +72,7 @@ hotels <- vroom::vroom(
   na = c("", " ", "NA", "NULL", 'Undefined'))
 ```
 
-Have you used vroom? It's basically a 'competitor' to the {data.table} package, but aligned with the tidyverse grammar. {data.table} is a great package and is FAST at almost everything. However, I prefer vroom over {data.table}'s `fread()` function.
+Have you heard of vroom? It's basically an alternative to the {data.table} package (in some ways), but aligned with the tidyverse grammar. {data.table} is a great package and is FAST at almost everything. However, I prefer vroom over {data.table}'s `fread()` function.
 
 One of the interesting things about `vroom()` is that you can identify what makes up an *na* or NULL value. In this case, I populated some example terms that I have seen used to identify NULL values. In my experience, this is often the case where NULL values are actually identifed as "NULL" or "NA" (in other words, these are characters).
 
@@ -78,7 +82,9 @@ Now let's take a quick peek at the data using the `glimpse()` function (part of 
 glimpse(hotels)
 ```
 
-# Check for Missing Values
+# Quick Data Insights
+
+## Check for Missing Values
 
 One of the first things I like to do is check for missing values. This is great for identifying variables (i.e., predictors) that we can exclude early on because they have too many missing values or variables which require imputation.
 
@@ -99,11 +105,37 @@ hotels %>%
 
 It seems like there are seven (7) different variables that have missing values. Note how almost 94% of the values in the variable <company> are missing. I can confidently say that this variable is not worth imputing or keeping in our analysis.
 
-## Conclusions
+### Conclusions
 - Remove the variable <company> from the entire training.
 - We can consider removing the variable <agent> since 14% of the observations are missing
 - We can consider simply removing the missing observations (i.e., rows) for country, distribution channel, market segment, and children
 - We can consider imputing the missing values for meal
+
+
+## Number of Unique Values per variable
+
+Another thing we can look at is how many unique values exist for each variable. This could help us understand which variables could be "condensed". Having too many categorical (i.e., ordinal & nonordinals) values may pose a challenge for models. Often, we can use embeddings or one-hot encodings, but we should think about the variables contextually. Sometimes, the variable may not make sense to keep in the model.
+
+```{r unique_values_by_variable}
+
+hotels %>%
+  purrr::map_df(function(x) length(unique(x))) %>%
+  tidyr::pivot_longer(
+    cols = everything(),
+    values_to = 'unique_values',
+    names_to = 'variable'
+  ) %>%
+  arrange(desc(unique_values))
+
+```
+
+### Conclusions
+
+- From my perspective, company and agent are two variables that we could probably remove. If a booking is cancelled, it probably won't be cancelled due to the travel agent or the company that made the booking. Perhaps I'm wrong, but at least in this context, I don't think it's a big deal.
+
+- Although there are many countries (178 unique ones), I feel that country could be an indicator of whether a booking may be cancelled. 
+
+
 
 # Variable Exploration
 
@@ -128,6 +160,23 @@ length(unique(hotels$agent))
 There are 334 unique values for the variable <agent>. This includes the NULL value. Typically, we can use the {forcats} package to trim down the number of unique values. For instance, we can identify the top 5 values and then have a 6th value that simply means "all others". However, if you recall, our goal is to predict cancellation. This column seems to be a unique identifier for the travel agent or tour operator. However, I'm not sure if this column will be contextually important. Don't forget, it also is missing 14% of the values!
 
 For the purposes of this walkthrough, I'll simply remove it.
+
+Now let's see the top 5 agents with the most cancellations:
+
+```{r top_5_agents_cancelled}
+
+hotels %>%
+  group_by(agent) %>%
+  summarize(
+    total_cancelled = sum(is_canceled)
+  ) %>%
+  ungroup() %>%
+  arrange(desc(total_cancelled)) %>%
+  head(5)
+
+```
+
+Seems like agent 9 has had the most cancellations. However, the issue that I have with this variable is that the agent value has been anonymized (we have no idea what or who agent 9 is) and there are many missing values for this variable.
 
 
 ## is_canceled (the response variable)
@@ -199,7 +248,8 @@ main_recipe <- recipes::recipe(~.,data = cln_hotel) %>%
     total_guests = adults + children + babies,
     total_cost = stay_duration * adr,
     meal_included = case_when(meal %in% c('SC','Undedfined') ~ 0, TRUE ~ 1),
-    city_hotel = ifelse(hotel == 'City Hotel', 1, 0)
+    city_hotel = ifelse(hotel == 'City Hotel', 1, 0),
+    roomtype_different = case_when(reserved_room_type != assigned_room_type ~ 1, TRUE ~ 0)
   ) %>%
   recipes::step_filter(
     total_cost > 0
@@ -221,7 +271,10 @@ main_recipe <- recipes::recipe(~.,data = cln_hotel) %>%
     adr, 
     meal, 
     distribution_channel, 
-    reservation_date
+    reservation_date,
+    hotel,
+    reserved_room_type,
+    assigned_room_type
   )
 
 ```
@@ -239,7 +292,9 @@ glimpse(burrito)
 
 Note the new features and the removal of redundant columns.
 
-# Train/Test Split
+# Dataset Preparation for Model Development
+
+## Train/Test Split
 
 Typically, I create 3 different datasets: training, validation, and test. Essentially, the model is built on the training dataset and the validation dataset is used to 'prove' out the model. I only use the test dataset as the absolute final dataset in which to prove out my trained model. Generally speaking, if my model fails on the test dataset, but performs well on the training and validation datasets, I start to look at the way the data were split. However, many issues can contribute to a model performing well on both training and validation datasets, but not performing well on the test dataset.
 
@@ -247,7 +302,7 @@ For this case study, I am only going to create a training and test dataset as I'
 
 ```{r splits}
 set.seed(8837)
-splits <- rsample::initial_split(cln_hotel, prop = 0.8, strata = is_canceled)
+splits <- rsample::initial_split(burrito, prop = 0.8, strata = is_canceled)
 
 df_train <- splits %>% rsample::training()
 df_test <- splits %>% rsample::testing()
@@ -255,7 +310,7 @@ df_test <- splits %>% rsample::testing()
 ```
 
 
-# Prep Training
+## Prep Training Dataset
 
 Recall from earlier that there is a bit of a class imbalance on the response variable, <is_canceled>. Let's take a look at the imbalance in the training dataset.
 
@@ -271,6 +326,331 @@ df_train %>%
 
 One of the solutions we have here is that we can downsample the response variable (a method recommended by one my heros, Max Kuhn) to balance the response variable. And we can do this with more recipes!
 
+Since we are wanting to create a neural network, all the values must be numerical. Here's what our recipes are doing:
+
+- Converting the days of week (e.g., Monday, Tuesday, etc.) to a number
+- Converting the response variable to a factor
+- Downsampling the training data so that the cancelled vs. non-cancelled observations are balanced
+- Removing variables that overwhelmingly contain one value (see [step_nzv documentation](https://tidymodels.github.io/recipes/reference/step_nzv.html)) and almost no variance.
+
+
+
+```{r process_train}
+
+model_recipe <- recipes::recipe(~., data = df_train) %>%
+  recipes::update_role(is_canceled, new_role = 'outcome') %>%
+  recipes::update_role(meal_included, city_hotel, is_repeated_guest, roomtype_different, new_role = 'pred_binary') %>%
+  recipes::step_normalize(recipes::all_numeric(), -recipes::has_role('pred_binary'), -is_canceled) %>%
+  recipes::step_string2factor(recipes::has_type(match = 'nominal')) %>%
+  recipes::step_ordinalscore(day_of_week) %>%
+  recipes::step_integer(recipes::all_nominal()) %>%
+  recipes::step_bin2factor(is_canceled) %>%
+  recipes::step_downsample(is_canceled) %>%
+  recipes::step_factor2string(is_canceled) %>%
+  recipes::step_mutate(is_canceled = case_when(is_canceled == 'yes' ~ 1, TRUE ~ 0)) %>%
+  recipes::step_nzv(everything()) %>%
+  recipes::prep(training = df_train, strings_as_factors = FALSE)
+
+```
+
+
+
+Let's take a look at the new training data.
+
+```{r preview_modified_training_data}
+ds_train <- juice(model_recipe)
+glimpse(ds_train)
+```
+
+
+Let's see if the response variable is now balanced.
+
+```{r downsample_check}
+ds_train %>%
+  group_by(is_canceled) %>%
+  count() %>%
+  ungroup() %>%
+  mutate(
+    pct = n / sum(n)
+  )
+```
+
+
+## Prep Test Dataset
+
+Now let's apply the recipe to the test dataset.
+
+```{r update_testdata}
+new_dftest <- recipes::bake(model_recipe, df_test)
+glimpse(new_dftest)
+```
+
+## Rearrange dataset columns
+
+We rearrange the columns so that it's easier to work with. This is probably optional, but I did this for my own sanity.
+
+```{r column_rearrange}
+
+ds_train <- ds_train %>%
+  select(
+    country,
+    customer_type,
+    day_of_week,
+    market_segment,
+    lead_time,
+    previous_cancellations,
+    booking_changes,
+    deposit_type,
+    total_of_special_requests,
+    stay_duration,
+    total_guests,
+    total_cost,
+    meal_included,
+    city_hotel,
+    roomtype_different,
+    is_canceled
+  )
+
+new_dftest <- new_dftest %>%
+    select(
+    country,
+    customer_type,
+    day_of_week,
+    market_segment,
+    lead_time,
+    previous_cancellations,
+    booking_changes,
+    deposit_type,
+    total_of_special_requests,
+    stay_duration,
+    total_guests,
+    total_cost,
+    meal_included,
+    city_hotel,
+    roomtype_different,
+    is_canceled
+  )
+
+```
 
 
 # Model Development - GPU
+
+Now we're going to build a neural network model using the GPU. Since I'm using a MacBook Pro with an external GPU that is NOT an nVidia brand, I will use PlaidML as the backend. Note that PlaidML is similar to tensorflow, but unlike it, PlaidML is compatible with almost any video card including the built-in one on the MacBook. However, I don't recommend using the integrated video card; I made that mistake and my MacBook basically froze in terror.
+
+```{r load_deepml}
+# define environment for GPU usage
+use_python('/usr/local/bin/python3')
+keras::use_virtualenv("~/python-virtual-environments/deeplearning/")
+use_backend('plaidml')
+
+```
+
+## Define functional API
+
+```{r keras_functional_api}
+
+# define embedding sizes
+
+embed_cntry = 50
+embed_custtype = 2
+embed_day = 4
+embed_marketsegment = 4
+
+
+# define inputs
+
+input_country <- layer_input(shape = 1, name = 'country_embedding_input')
+input_custype <- layer_input(shape = 1, name = 'customertype_embedding_input')
+input_day <- layer_input(shape = 1, name = 'day_embedding_input')
+input_marketsegment <- layer_input(shape = 1, name = 'marketsegment_embedding_input')
+input_allvars <- layer_input(shape = 11, name = 'remaining_predictors_input')
+
+# define embeddings
+
+## no more than 50 or number of unique values / 2
+
+cntry_embedding <- layer_embedding(
+  input_dim = 155,
+  output_dim = embed_cntry,
+  input_length = 1,
+  name = 'embedding_country'
+)
+
+custype_embedding <- layer_embedding(
+  input_dim = 4,
+  output_dim = embed_custtype,
+  input_length = 1,
+  name = 'embedding_customertype'
+)
+
+dayofweek_embedding <- layer_embedding(
+  input_dim = 7,
+  output_dim = embed_day,
+  input_length = 1,
+  name = 'embedding_dayofweek'
+)
+ 
+marketsegment_embedding <- layer_embedding(
+  input_dim = 7,
+  output_dim = embed_marketsegment,
+  input_length = 1,
+  name = 'embedding_marketsegment'
+)
+ 
+ 
+emb_cntry <- input_country %>%
+ cntry_embedding() %>%
+ layer_flatten()
+
+emb_custype <- input_custype %>%
+  custype_embedding() %>%
+  layer_flatten()
+
+emb_dayofweek <- input_day %>%
+  dayofweek_embedding() %>%
+  layer_flatten()
+
+emb_marketsegment <- input_marketsegment %>%
+  marketsegment_embedding() %>%
+  layer_flatten()
+
+pred_vars <- layer_concatenate(list(emb_cntry, emb_custype, emb_dayofweek, emb_marketsegment, input_allvars))
+
+# layer definition
+h1 <- layer_dense(pred_vars, units = 60, activation = 'relu')
+d1 <- layer_dropout(h1, rate = 0.2)
+h2 <- layer_dense(pred_vars, units = 30, activation = 'relu')
+d2 <- layer_dropout(h2, rate = 0.1)
+o1 <- layer_dense(d2, units = 1, activation = 'sigmoid')
+
+# we want class probabilities
+
+# model definition
+
+model <- keras_model(
+  inputs = list(input_country, input_custype, input_day, input_marketsegment, input_allvars),
+  outputs = o1
+)
+
+model %>% compile(
+  loss = 'binary_crossentropy',
+  optimizer = 'adam',
+  metrics = c('accuracy')
+)
+
+summary(model)
+```
+
+
+
+
+## Train Model
+
+```{r train_model}
+
+history <- fit(
+  object = model,
+  y = ds_train %>% pull(is_canceled),
+  x = list(
+    as.matrix(ds_train %>% pull(country)), 
+    as.matrix(ds_train %>% pull(customer_type)),
+    as.matrix(ds_train %>% pull(day_of_week)),
+    as.matrix(ds_train %>% pull(market_segment)),
+    as.matrix(ds_train %>% select(-country, -customer_type, -day_of_week,-market_segment, -is_canceled))
+    ),
+  batch_size = 1000,
+  epochs = 50,
+  validaton_split = 0.3
+)
+
+print(history)
+
+
+
+```
+
+```{r plot_modeltraining}
+plot(history)
+```
+
+
+## Predict Values for Test Dataset
+
+```{r model_predictions_test_dataset}
+
+yhat_class_pred <- predict(
+  object = model, 
+    x = list(
+    as.matrix(new_dftest %>% pull(country)), 
+    as.matrix(new_dftest %>% pull(customer_type)),
+    as.matrix(new_dftest %>% pull(day_of_week)),
+    as.matrix(new_dftest %>% pull(market_segment)),
+    as.matrix(new_dftest %>% select(-country, -customer_type, -day_of_week,-market_segment, -is_canceled))
+    )
+  ) %>%
+  as.vector()
+
+```
+
+
+## Model Assessment Metrics
+
+I'm going to create a simple tibble that enables me to capture the test values and the predicted values. This will enable assessing the metrics using the package {yardstick} much more easily.
+
+
+```{r create_test_value_tibble}
+
+test_tbl <- tibble::tibble(
+  truth = as.factor(new_dftest$is_canceled) %>% fct_recode(cancelled = '1', not_cancelled = '0'),
+  class_prob = yhat_class_pred
+) %>%
+  dplyr::mutate(
+    predicted_class = ifelse(class_prob >= 0.5, 1, 0),
+    estimate = as.factor(predicted_class) %>% fct_recode(cancelled = '1', not_cancelled = '0')
+  ) %>%
+  dplyr::select(-predicted_class)
+
+```
+
+
+### Confusion Matrix
+
+```{r}
+test_tbl %>%
+  yardstick::conf_mat(truth, estimate)
+```
+
+### Accuracy
+
+```{r}
+test_tbl %>%
+  yardstick::metrics(truth, estimate) %>%
+  dplyr::select(.metric, .estimate)
+```
+
+### AUC
+
+```{r}
+test_tbl %>%
+  yardstick::roc_auc(truth, class_prob) %>%
+  dplyr::select(.metric, .estimate)
+```
+
+### Precision & Recall
+
+```{r}
+tibble(
+  precision = test_tbl %>% yardstick::precision(truth,estimate) %>% pull(.estimate),
+  recall = test_tbl %>% yardstick::recall(truth, estimate) %>% pull(.estimate)
+)
+```
+
+### F1 Score
+
+```{r}
+test_tbl %>%
+  yardstick::f_meas(truth, estimate, beta = 1) %>%
+  dplyr::select(.estimate)
+```
+
