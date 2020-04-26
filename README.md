@@ -11,6 +11,10 @@ I found it challenging to find a simple walk-through in R that built a simple cl
 
 The walkthrough can be found [here](https://github.com/nikdata/hotel-modeling/blob/master/hotel-analysis.md)
 
+## Full Code
+
+The full code is [here](https://github.com/nikdata/hotel-modeling/blob/master/full-code.R).
+
 ## Next Steps
 
 My next step (time permitting) is to create this walkthrough in Python.
