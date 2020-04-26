@@ -17,15 +17,15 @@ One of my main motivations is to learn how to develop models using a GPU. Model 
 
 PlaidML is an alternative framework to TensorFlow that enables you to use almost any compatible GPU - such as AMD Radeon, nVidia, etc. You can find out how to set-up PlaidML [here](https://plaidml.github.io/plaidml/docs/install#macos). While PlaidML may not be as mature as TensorFlow, you can easily use Keras (the high-level wrapper) and continue on your way. Sure, I could have used Google CoLab or AWS to learn how to build models using a GPU (and stuck with TensorFlow). However, I prefer to do my analysis/coding on a local machine in a non-notebook environment. But I digress.
 
-Surprisingly, I found it challenging to find simple yet comprehenisve examples for regression and classification. Many of the examples I found were around image classification, text analytics, etc. Even the 'simple' regression example (see [here](https://machinelearningmastery.com/regression-tutorial-keras-deep-learning-library-python/)) uses a dataset that is pretty much ready for a neural network. I find, for myself, that it's easier to work with a dataset that requires some 'cleaning' and processing so that it's a bit more representative of what you see in the real world.
+Surprisingly, I found it challenging to find simple yet comprehensive examples for regression and classification using keras's functional API. Many of the examples I found used the sequential API - which may be easier to use, but not always the best choice. Furthermore, many of the examples leveraged pre-processed "ready to go" datasets (see [here](https://machinelearningmastery.com/regression-tutorial-keras-deep-learning-library-python/)) for building a neural network. I find, for myself, that it's easier to work with a dataset that requires some 'cleaning' and processing so that it's a bit more representative of what you see in the real world.
 
 I have three main goals for this exercise: 
 
-- Pick a dataset and brielfy walk through a 'usual' data-science process (e.g., exploratory data analysis - EDA, feature engineering, train/test split, etc.)
-- Develop a simple neural network model using Keras with a PlaidML backend
+- Pick a dataset and briefly walk through a 'usual' data-science process (e.g., exploratory data analysis - EDA, feature engineering, train/test split, etc.)
+- Develop a simple neural network model using Keras with the functional API and use the PlaidML backend
 - Apply trained model to test dataset and obtain some metrics
 
-**NOTE**: I am not interested in making the 'perfect' model or even a well-performing model. I am simply creating a walkthrough on how to go from a dataset to trained neural network (i.e., deep neural network - DNN) model using a GPU, PlaidML, and Keras.
+**NOTE**: I am not interested in making the 'perfect' model or even a well-performing model. I am simply creating a walk-through on how to go from a dataset to trained neural network (i.e., deep neural network - DNN) model using a GPU, PlaidML, and Keras.
 
 
 # Background on Dataset
@@ -34,12 +34,12 @@ On February 11, 2020, the [TidyTuesday](https://github.com/rfordatascience/tidyt
 
 Briefly, the dataset captures the bookings made for customers arriving between July 1, 2015 and August 31, 2017 between two different hotel types (resort vs. city).
 
-While this is is a great exploratory dataset, I'm choosing to predict whether a booking will be cancelled or not (a classic two-class problem). Contextually speaking, this dataset may not perform well because it may not capture the true reasons why a booking was cancelled. However, it is a large enough dataset that I can use as a walkthrough.
+While this is is a great exploratory dataset, I'm choosing to predict whether a booking will be cancelled or not (a classic two-class problem). Contextually speaking, this dataset may not perform well because it may not capture the true reasons why a booking was cancelled. However, it is a large enough dataset that I can use as a walk-through.
 
 I am aware that this dataset is fairly 'clean' and ready to be analyzed. And that's ok! This dataset is actually not perfect:
 
 - it has missing values
-- it has several categoricals
+- it has several categorical variables
 - new features can be created
 
 In my view, this dataset is perfect!
@@ -74,7 +74,7 @@ hotels <- vroom::vroom(
 
 Have you heard of vroom? It's basically an alternative to the {data.table} package (in some ways), but aligned with the tidyverse grammar. {data.table} is a great package and is FAST at almost everything. However, I prefer vroom over {data.table}'s `fread()` function.
 
-One of the interesting things about `vroom()` is that you can identify what makes up an *na* or NULL value. In this case, I populated some example terms that I have seen used to identify NULL values. In my experience, this is often the case where NULL values are actually identifed as "NULL" or "NA" (in other words, these are characters).
+One of the interesting things about `vroom()` is that you can identify what makes up an *na* or NULL value. In this case, I populated some example terms that I have seen used to identify NULL values. In my experience, this is often the case where NULL values are actually identified as "NULL" or "NA" (in other words, these are characters).
 
 Now let's take a quick peek at the data using the `glimpse()` function (part of {dplyr}).
 
@@ -114,7 +114,7 @@ It seems like there are seven (7) different variables that have missing values. 
 
 ## Number of Unique Values per variable
 
-Another thing we can look at is how many unique values exist for each variable. This could help us understand which variables could be "condensed". Having too many categorical (i.e., ordinal & nonordinals) values may pose a challenge for models. Often, we can use embeddings or one-hot encodings, but we should think about the variables contextually. Sometimes, the variable may not make sense to keep in the model.
+Another thing we can look at is how many unique values exist for each variable. This could help us understand which variables could be "condensed". Having too many categorical (i.e., ordinal & non-ordinals) values may pose a challenge for models. Often, we can use embeddings or one-hot encodings, but we should think about the variables contextually. Sometimes, the variable may not make sense to keep in the model.
 
 ```{r unique_values_by_variable}
 
@@ -247,7 +247,7 @@ main_recipe <- recipes::recipe(~.,data = cln_hotel) %>%
     stay_duration = stays_in_week_nights + stays_in_weekend_nights,
     total_guests = adults + children + babies,
     total_cost = stay_duration * adr,
-    meal_included = case_when(meal %in% c('SC','Undedfined') ~ 0, TRUE ~ 1),
+    meal_included = case_when(meal %in% c('SC','Undefined') ~ 0, TRUE ~ 1),
     city_hotel = ifelse(hotel == 'City Hotel', 1, 0),
     roomtype_different = case_when(reserved_room_type != assigned_room_type ~ 1, TRUE ~ 0)
   ) %>%

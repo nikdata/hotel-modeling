@@ -58,27 +58,27 @@ used Google CoLab or AWS to learn how to build models using a GPU (and
 stuck with TensorFlow). However, I prefer to do my analysis/coding on a
 local machine in a non-notebook environment. But I digress.
 
-Surprisingly, I found it challenging to find simple yet comprehenisve
-examples for regression and classification. Many of the examples I found
-were around image classification, text analytics, etc. Even the ‘simple’
-regression example (see
+Surprisingly, I found it challenging to find simple yet comprehensive
+examples for regression and classification using keras’s functional API.
+Many of the examples I found used the sequential API - which may be
+easier to use, but not always the best choice. Furthermore, many of the
+examples leveraged pre-processed “ready to go” datasets (see
 [here](https://machinelearningmastery.com/regression-tutorial-keras-deep-learning-library-python/))
-uses a dataset that is pretty much ready for a neural network. I find,
-for myself, that it’s easier to work with a dataset that requires some
-‘cleaning’ and processing so that it’s a bit more representative of
-what you see in the real world.
+for building a neural network. I find, for myself, that it’s easier to
+work with a dataset that requires some ‘cleaning’ and processing so that
+it’s a bit more representative of what you see in the real world.
 
 I have three main goals for this exercise:
 
-  - Pick a dataset and brielfy walk through a ‘usual’ data-science
+  - Pick a dataset and briefly walk through a ‘usual’ data-science
     process (e.g., exploratory data analysis - EDA, feature engineering,
     train/test split, etc.)
-  - Develop a simple neural network model using Keras with a PlaidML
-    backend
+  - Develop a simple neural network model using Keras with the
+    functional API and use the PlaidML backend
   - Apply trained model to test dataset and obtain some metrics
 
 **NOTE**: I am not interested in making the ‘perfect’ model or even a
-well-performing model. I am simply creating a walkthrough on how to go
+well-performing model. I am simply creating a walk-through on how to go
 from a dataset to trained neural network (i.e., deep neural network -
 DNN) model using a GPU, PlaidML, and Keras.
 
@@ -100,13 +100,13 @@ While this is is a great exploratory dataset, I’m choosing to predict
 whether a booking will be cancelled or not (a classic two-class
 problem). Contextually speaking, this dataset may not perform well
 because it may not capture the true reasons why a booking was cancelled.
-However, it is a large enough dataset that I can use as a walkthrough.
+However, it is a large enough dataset that I can use as a walk-through.
 
 I am aware that this dataset is fairly ‘clean’ and ready to be analyzed.
 And that’s ok\! This dataset is actually not perfect:
 
   - it has missing values
-  - it has several categoricals
+  - it has several categorical variables
   - new features can be created
 
 In my view, this dataset is perfect\!
@@ -161,7 +161,7 @@ One of the interesting things about `vroom()` is that you can identify
 what makes up an *na* or NULL value. In this case, I populated some
 example terms that I have seen used to identify NULL values. In my
 experience, this is often the case where NULL values are actually
-identifed as “NULL” or “NA” (in other words, these are characters).
+identified as “NULL” or “NA” (in other words, these are characters).
 
 Now let’s take a quick peek at the data using the `glimpse()` function
 (part of {dplyr}).
@@ -259,10 +259,11 @@ or keeping in our analysis.
 
 Another thing we can look at is how many unique values exist for each
 variable. This could help us understand which variables could be
-“condensed”. Having too many categorical (i.e., ordinal & nonordinals)
-values may pose a challenge for models. Often, we can use embeddings or
-one-hot encodings, but we should think about the variables contextually.
-Sometimes, the variable may not make sense to keep in the model.
+“condensed”. Having too many categorical (i.e., ordinal &
+non-ordinals) values may pose a challenge for models. Often, we can use
+embeddings or one-hot encodings, but we should think about the variables
+contextually. Sometimes, the variable may not make sense to keep in the
+model.
 
 ``` r
 hotels %>%
@@ -456,7 +457,7 @@ main_recipe <- recipes::recipe(~.,data = cln_hotel) %>%
     stay_duration = stays_in_week_nights + stays_in_weekend_nights,
     total_guests = adults + children + babies,
     total_cost = stay_duration * adr,
-    meal_included = case_when(meal %in% c('SC','Undedfined') ~ 0, TRUE ~ 1),
+    meal_included = case_when(meal %in% c('SC','Undefined') ~ 0, TRUE ~ 1),
     city_hotel = ifelse(hotel == 'City Hotel', 1, 0),
     roomtype_different = case_when(reserved_room_type != assigned_room_type ~ 1, TRUE ~ 0)
   ) %>%
@@ -906,8 +907,8 @@ print(history)
 
     ## Trained on 70,322 samples (batch_size=1,000, epochs=50)
     ## Final epoch (plot to see history):
-    ## loss: 0.3943
-    ##  acc: 0.8103
+    ## loss: 0.3922
+    ##  acc: 0.8121
 
 ``` r
 plot(history)
@@ -960,8 +961,8 @@ test_tbl %>%
 
     ##                Truth
     ## Prediction      not_cancelled cancelled
-    ##   not_cancelled         12352      2004
-    ##   cancelled              2249      6785
+    ##   not_cancelled         12409      2002
+    ##   cancelled              2192      6787
 
 ### Accuracy
 
@@ -974,8 +975,8 @@ test_tbl %>%
     ## # A tibble: 2 x 2
     ##   .metric  .estimate
     ##   <chr>        <dbl>
-    ## 1 accuracy     0.818
-    ## 2 kap          0.615
+    ## 1 accuracy     0.821
+    ## 2 kap          0.619
 
 ### AUC
 
@@ -1002,7 +1003,7 @@ tibble(
     ## # A tibble: 1 x 2
     ##   precision recall
     ##       <dbl>  <dbl>
-    ## 1     0.860  0.846
+    ## 1     0.861  0.850
 
 ### F1 Score
 
@@ -1015,4 +1016,4 @@ test_tbl %>%
     ## # A tibble: 1 x 1
     ##   .estimate
     ##       <dbl>
-    ## 1     0.853
+    ## 1     0.855

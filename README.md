@@ -1,11 +1,32 @@
-# Hotel Data
+# Predicting Hotel Booking Cancellations
+
+## TL;DR
+This repo contains a tutorial on how to leverage {keras} and PlaidML (an alternative to TensorFlow) to build a simple binary classification model using a GPU.
+
+## Background
+
+I found it challenging to find a simple walk-through in R that built a simple classification model using {keras}'s Functional API and PlaidML. PlaidML is an open source framework that works with almost any GPU unlike TensorFlow. Furthermore, if you rely on a newer Mac, you are unable to use an nVidia GPU (which is required for TensorFlow) and must rely on an AMD GPU. For that purpose, I found that PlaidML works well and it works on any branded GPU. While PlaidML is nothing more than a frame-work, its key benefit is that the overall coding doesn't change much. Lastly, many of the walkthroughs for building models in {keras} and R seem to rely on the sequential approach and not so much on the functional API approach. 
+
+## Walkthrough
+
+The walkthrough can be found [here](https://github.com/nikdata/hotel-modeling/blob/master/hotel-analysis.md)
+
+## Next Steps
+
+My next step (time permitting) is to create this walkthrough in Python.
+
+## References
 
 ### Source
 [Antonio, Almeida and Nunes, 2019](https://www.sciencedirect.com/science/article/pii/S2352340918315191#f0010)
+[Tidy Tuesday](https://github.com/rfordatascience/tidytuesday/tree/master/data/2020/2020-02-11)
 
 ### Hat tip
 
-[Tidy Tuesday](https://github.com/rfordatascience/tidytuesday/tree/master/data/2020/2020-02-11)
+[RStudio AI Blog: Deep Learning with Keras to Predict Customer Churn](https://blogs.rstudio.com/tensorflow/posts/2018-01-11-keras-customer-churn/)
+[RStudio AI Blog: Word Embeddings](https://blogs.rstudio.com/tensorflow/posts/2017-12-22-word-embeddings-with-keras/)
+[Machine Learning Mastery: Regression Tutorial with Keras](https://machinelearningmastery.com/regression-tutorial-keras-deep-learning-library-python/)
+
 
 ### Data Dictionary
 
