@@ -64,5 +64,12 @@ cln_hotel.loc[cln_hotel['hotel'].eq('City Hotel'), 'city_hotel'] = 1
 
 # was assigned roomtype different than requested roomtype
 
+cln_hotel = cln_hotel.assign(roomtype_different = lambda x: np.where(x.reserved_room_type == x.assigned_room_type, 0, 1))
 
+# ensure that the total cost is greater than 0
+cln_hotel = cln_hotel.query("total_cost > 0")
 
+# remove all the extra columns
+cln_hotel = cln_hotel.drop(['hotel','arrival_date_year','arrival_date_month','arrival_date_week_number','arrival_date_day_of_month','stays_in_weekend_nights','stays_in_week_nights','adults','children','babies','meal','distribution_channel','reserved_room_type','assigned_room_type','adr','meal','reservation_status','reservation_status_date'], axis = 1)
+
+# create test training split
